@@ -1,0 +1,31 @@
+name: Strava inactivity check
+
+on:
+  schedule:
+    - cron: "0 7 * * *"  # jeden Tag um 07:00 UTC
+  workflow_dispatch: {}   # manuell starten
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install node-fetch@3
+
+      - name: Run script
+        env:
+          STRAVA_CLIENT_ID: ${{ secrets.STRAVA_CLIENT_ID }}
+          STRAVA_CLIENT_SECRET: ${{ secrets.STRAVA_CLIENT_SECRET }}
+          STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DAYS_WITHOUT_ACTIVITY: ${{ secrets.DAYS_WITHOUT_ACTIVITY }}
+        run: node check-strava.js
