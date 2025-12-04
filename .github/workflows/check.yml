@@ -28,4 +28,5 @@ jobs:
           STRAVA_REFRESH_TOKEN: ${{ secrets.STRAVA_REFRESH_TOKEN }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DAYS_WITHOUT_ACTIVITY: ${{ secrets.DAYS_WITHOUT_ACTIVITY }}
+          FORCE_TEST: ${{ secrets.FORCE_TEST }}
         run: node check-strava.js
