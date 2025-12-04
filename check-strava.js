@@ -1,3 +1,5 @@
+import fetch from "node-fetch";
+
 if (process.env.FORCE_TEST === "true") {
   console.log("Testmode → sende Slack Nachricht");
   await fetch(process.env.SLACK_WEBHOOK_URL, {
@@ -8,7 +10,7 @@ if (process.env.FORCE_TEST === "true") {
   process.exit(0);
 }
 
-import fetch from "node-fetch";
+
 
 const {
   STRAVA_CLIENT_ID,
