@@ -48,6 +48,8 @@ async function main() {
   const tokenData = await getAccessToken();
   const activities = await getRecentActivities(tokenData.access_token);
 
+  console.log("Strava Activities Data:", activities);
+  
   if (activities.length === 0) {
     console.log("Keine Aktivitäten → Slack Nachricht");
     await notifySlack();
