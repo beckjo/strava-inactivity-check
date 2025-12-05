@@ -81,12 +81,11 @@ async function getLastActivity(token) {
 // Slack Nachricht senden
 // --------------------------
 async function sendSlackMessage(lastActivity, daysSinceLast) {
-  const dayText = daysSinceLast === 1 ? "Tag" : "Tage";
   const motivation = getRandomMotivation();
   const mocoLink = "https://goldinteractive.mocoapp.com/activities";
 
   const blocks = [
-    { type: "section", text: { type: "mrkdwn", text: `⚠️ *Keine Aktivität seit ${daysSinceLast} ${dayText}!*` } },
+    { type: "section", text: { type: "mrkdwn", text: `⚠️ *Keine Aktivität seit ${daysSinceLast} Tagen!*` } },
     { type: "divider" }
   ];
 
@@ -105,7 +104,7 @@ async function sendSlackMessage(lastActivity, daysSinceLast) {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `💬 _${motivation}_\n\n📌 *Arbeitszeit tracken:* <${mocoLink}|Hier klicken>`
+      text: `💬 _${motivation}_\n\n📌 Also los, alles liegen lassen – [Arbeit beenden](${mocoLink})`
     }
   });
 
