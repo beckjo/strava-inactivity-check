@@ -1,163 +1,147 @@
 import fetch from "node-fetch";
 
-// -------------------------------------------------------
-// CONFIG
-// -------------------------------------------------------
-const STRAVA_CLIENT_ID = process.env.STRAVA_CLIENT_ID;
-const STRAVA_CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
-const STRAVA_REFRESH_TOKEN = process.env.STRAVA_REFRESH_TOKEN;
-const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+// --------------------------
+// GitHub Secrets als Env
+// --------------------------
+const {
+  STRAVA_CLIENT_ID,
+  STRAVA_CLIENT_SECRET,
+  STRAVA_REFRESH_TOKEN,
+  SLACK_WEBHOOK_URL,
+  DAYS_WITHOUT_ACTIVITY = 5
+} = process.env;
 
-const DAYS = parseInt(process.env.DAYS_WITHOUT_ACTIVITY || "5", 10);
+// --------------------------
+// Zufällige Motivationsnachrichten
+// --------------------------
+const motivationalMessages = [
+  "Deine Beine vermissen dich! 🏃‍♂️",
+  "Heute laufen wir nicht – wir fliegen! 💨",
+  "Muskelalarm! 💪 Zeit, sie wieder zu wecken!",
+  "Lass die Couch nicht gewinnen! 🛋️💥",
+  "Ab auf die Strecke – die Kilometer warten! 🏞️",
+  "Zeig deinem inneren Schweinehund, wer Boss ist! 🐷➡️💪",
+  "Zeit für Bewegung! Dein Körper sagt danke! 🙌",
+  "Rekorde brechen oder einfach Spaß haben – los geht’s! ⚡",
+  "Jede Bewegung zählt – also los! 🔥",
+  "Laufen, rollen, strampeln – Hauptsache aktiv! 🚴‍♀️"
+];
 
-// -------------------------------------------------------
-// 1) Strava Access Token aktualisieren
-// -------------------------------------------------------
+// Zusätzliche kleine Emojis / Variationen
+const emojiExtras = ["✨", "🌟", "⚡", "🔥", "💨", "💪", "🏃‍♂️", "🏃‍♀️"];
+
+// --------------------------
+// Zufällige Auswahl
+// --------------------------
+function getRandomMotivation() {
+  const idx = Math.floor(Math.random() * motivationalMessages.length);
+  const emoji = emojiExtras[Math.floor(Math.random() * emojiExtras.length)];
+  return `${motivationalMessages[idx]} ${emoji}`;
+}
+
+// --------------------------
+// Strava Access Token abrufen
+// --------------------------
 async function getAccessToken() {
-  const res = await fetch("https://www.strava.com/oauth/token", {
+  console.log("🔄 Strava Access Token abrufen …");
+  const params = new URLSearchParams({
+    client_id: STRAVA_CLIENT_ID,
+    client_secret: STRAVA_CLIENT_SECRET,
+    refresh_token: STRAVA_REFRESH_TOKEN,
+    grant_type: "refresh_token"
+  });
+
+  const res = await fetch("https://www.strava.com/api/v3/oauth/token", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: STRAVA_CLIENT_ID,
-      client_secret: STRAVA_CLIENT_SECRET,
-      grant_type: "refresh_token",
-      refresh_token: STRAVA_REFRESH_TOKEN,
-    }),
+    body: params
   });
 
   const data = await res.json();
-  if (!data.access_token) {
-    console.error("❌ Strava Token Error:", data);
-    throw new Error("Strava Token konnte nicht abgerufen werden");
+  if (data.access_token) {
+    return data.access_token;
+  } else {
+    console.error("❌ Fehler beim Abrufen des Access Tokens", data);
+    return null;
   }
-  return data.access_token;
 }
 
-// -------------------------------------------------------
-// 2) Letzte Strava-Aktivitäten holen
-// -------------------------------------------------------
-async function getActivities(accessToken, afterDays) {
-  const now = Math.floor(Date.now() / 1000);
-  const after = now - afterDays * 24 * 60 * 60;
-  const url = `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=30`;
-
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  const data = await res.json();
-  return data;
-}
-
-// -------------------------------------------------------
-// 3) GPT generiert Motivationsnachricht mit Debug
-// -------------------------------------------------------
-async function generateMotivation(activityName, days) {
-  const prompt = `
-Du bist ein motivierender Sport-Coach.
-Erzeuge eine kurze, peppige Motivationsnachricht auf Deutsch.
-Kontext:
-- letzte Aktivität: "${activityName}"
-- Tage ohne Training: ${days}
-Ton: locker, motivierend, 1–2 Sätze.
-  `;
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "gpt-4.1-mini",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 60,
-      temperature: 0.9,
-    }),
+// --------------------------
+// Letzte Aktivitäten abrufen
+// --------------------------
+async function getLastActivity(token) {
+  console.log("📡 Aktivitäten prüfen …");
+  const res = await fetch("https://www.strava.com/api/v3/athlete/activities?per_page=1", {
+    headers: { Authorization: `Bearer ${token}` }
   });
-
-  const data = await res.json();
-
-  // 🔹 DEBUG: Ausgabe der API-Antwort
-  console.log("🔹 GPT Response:", JSON.stringify(data, null, 2));
-
-  if (!data.choices || !data.choices[0]?.message?.content) {
-    console.warn("⚠️ GPT Response ungültig – fallback Nachricht wird genutzt");
-    return "💬 Zeit, wieder in die Gänge zu kommen! 💪";
-  }
-
-  return data.choices[0].message.content.trim();
+  const activities = await res.json();
+  return activities.length > 0 ? activities[0] : null;
 }
 
-// -------------------------------------------------------
-// 4) Slack Nachricht mit Blocks senden
-// -------------------------------------------------------
-async function sendSlackMessageBlocks(last, daysSinceLast, motivation) {
+// --------------------------
+// Slack Nachricht senden
+// --------------------------
+async function sendSlackMessage(lastActivity, daysSinceLast) {
   const dayText = daysSinceLast === 1 ? "Tag" : "Tage";
+  const motivation = getRandomMotivation();
+  const mocoLink = "https://goldinteractive.mocoapp.com/activities";
 
   const blocks = [
     { type: "section", text: { type: "mrkdwn", text: `⚠️ *Keine Aktivität seit ${daysSinceLast} ${dayText}!*` } },
-    { type: "divider" },
+    { type: "divider" }
   ];
 
-  if (last) {
+  if (lastActivity) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Letzte Aktivität:*\n• *Name:* ${last.name}\n• *Distanz:* ${(last.distance/1000).toFixed(1)} km\n• *Dauer:* ${Math.round(last.moving_time/60)} min\n• *Datum:* ${new Date(last.start_date).toLocaleString("de-CH")}`
+        text: `*Letzte Aktivität:*\n• *Name:* ${lastActivity.name}\n• *Distanz:* ${(lastActivity.distance/1000).toFixed(1)} km\n• *Dauer:* ${Math.round(lastActivity.moving_time/60)} min\n• *Datum:* ${new Date(lastActivity.start_date).toLocaleString("de-CH")}`
       }
     });
-  } else {
-    blocks.push({ type: "section", text: { type: "mrkdwn", text: "_Keine vorherige Aktivität gefunden._" } });
+    blocks.push({ type: "divider" });
   }
 
-  blocks.push({ type: "divider" });
-  blocks.push({ type: "section", text: { type: "mrkdwn", text: `💬 _${motivation}_` } });
-
-  await fetch(SLACK_WEBHOOK_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ blocks }) });
-}
-
-// -------------------------------------------------------
-// MAIN
-// -------------------------------------------------------
-async function main() {
-  try {
-    console.log("🔄 Strava Access Token abrufen …");
-    const token = await getAccessToken();
-
-    console.log("📡 Aktivitäten prüfen …");
-    const activities = await getActivities(token, DAYS);
-
-    if (activities.length > 0) {
-      console.log("✅ Aktivität gefunden → keine Nachricht nötig.");
-      return;
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `💬 _${motivation}_\n\n📌 *Arbeitszeit tracken:* <${mocoLink}|Hier klicken>`
     }
+  });
 
-    console.log("⚠️ Keine Aktivität → sende Slack Nachricht.");
+  const res = await fetch(SLACK_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ blocks })
+  });
 
-    // Letzte Aktivität unabhängig vom Zeitraum holen
-    const lastRes = await fetch("https://www.strava.com/api/v3/athlete/activities?per_page=1", { headers: { Authorization: `Bearer ${token}` } });
-    const lastList = await lastRes.json();
-    const last = lastList[0];
-
-    // Tage seit letzter Aktivität berechnen
-    let daysSinceLast = DAYS;
-    let lastDate = new Date();
-    if (last) {
-      lastDate = new Date(last.start_date);
-      const diffMs = new Date() - lastDate;
-      daysSinceLast = Math.max(1, Math.floor(diffMs / (1000*60*60*24))); // min. 1 Tag
-    }
-
-    // GPT-Motivation
-    const motivation = await generateMotivation(last?.name ?? "Training", daysSinceLast);
-
-    await sendSlackMessageBlocks(last, daysSinceLast, motivation);
+  if (res.ok) {
     console.log("📨 Slack Nachricht gesendet!");
-
-  } catch (err) {
-    console.error("❌ Fehler:", err);
-    process.exit(1);
+  } else {
+    console.error("❌ Slack Nachricht konnte nicht gesendet werden:", await res.text());
   }
 }
 
-main();
+// --------------------------
+// Main
+// --------------------------
+(async () => {
+  try {
+    const token = await getAccessToken();
+    if (!token) return;
+
+    const lastActivity = await getLastActivity(token);
+    const now = new Date();
+    const lastDate = lastActivity ? new Date(lastActivity.start_date) : null;
+    const diffDays = lastDate ? Math.floor((now - lastDate) / (1000*60*60*24)) : Infinity;
+
+    if (diffDays >= DAYS_WITHOUT_ACTIVITY) {
+      console.warn("⚠️ Keine Aktivität → sende Slack Nachricht.");
+      await sendSlackMessage(lastActivity, diffDays);
+    } else {
+      console.log(`✅ Aktivität innerhalb der letzten ${DAYS_WITHOUT_ACTIVITY} Tage vorhanden.`);
+    }
+  } catch (e) {
+    console.error("❌ Fehler im Script:", e);
+  }
+})();
