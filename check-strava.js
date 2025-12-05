@@ -38,9 +38,9 @@ async function getAccessToken() {
 // -------------------------------------------------------
 // 2) Letzte Strava-Aktivitäten holen
 // -------------------------------------------------------
-async function getActivities(accessToken) {
+async function getActivities(accessToken, afterDays) {
   const now = Math.floor(Date.now() / 1000);
-  const after = now - DAYS * 24 * 60 * 60;
+  const after = now - afterDays * 24 * 60 * 60;
 
   const url = `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=30`;
 
@@ -111,7 +111,7 @@ async function main() {
     const token = await getAccessToken();
 
     console.log("📡 Hole Aktivitäten …");
-    const activities = await getActivities(token);
+    const activities = await getActivities(token, DAYS);
 
     console.log("➡ Aktuelle Aktivitäten:", activities);
 
@@ -122,8 +122,7 @@ async function main() {
 
     console.log("⚠️ Keine Aktivität gefunden → Sende Slack Nachricht.");
 
-    // Letzte Aktivität holen (für die GPT-Nachricht)
-    // Wir holen zusätzlich die letzte Aktivität unabhängig vom Zeitraum
+    // Letzte Aktivität holen (unabhängig vom Zeitraum)
     const lastActivityResponse = await fetch(
       "https://www.strava.com/api/v3/athlete/activities?per_page=1",
       { headers: { Authorization: `Bearer ${token}` } }
@@ -131,16 +130,30 @@ async function main() {
     const lastList = await lastActivityResponse.json();
     const last = lastList[0];
 
-    const motivation = await generateMotivation(last?.name ?? "Training", DAYS);
+    // Dynamische Berechnung der Tage seit letzter Aktivität
+    let daysSinceLast = DAYS;
+    let lastDate = new Date();
+    if (last) {
+      lastDate = new Date(last.start_date);
+      const now = new Date();
+      const diffMs = now - lastDate;
+      daysSinceLast = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    }
 
+    const dayText = daysSinceLast === 1 ? "Tag" : "Tage";
+
+    // GPT-Motivation
+    const motivation = await generateMotivation(last?.name ?? "Training", daysSinceLast);
+
+    // Nachricht formatieren
     const formatted = `
-*Keine Aktivität seit ${DAYS} Tagen!* 😴
+*Keine Aktivität seit ${daysSinceLast} ${dayText}!* 😴
 
 *Letzte Aktivität:*  
-• ${last.name}  
-• ${(last.distance / 1000).toFixed(1)} km  
-• ${Math.round(last.moving_time / 60)} min  
-• am ${new Date(last.start_date).toLocaleString("de-CH")}
+• ${last?.name ?? "–"}  
+• ${last ? (last.distance / 1000).toFixed(1) + " km" : "-"}  
+• ${last ? Math.round(last.moving_time / 60) + " min" : "-"}  
+• am ${lastDate.toLocaleString("de-CH")}
 
 _${motivation}_
     `;
