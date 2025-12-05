@@ -48,7 +48,7 @@ async function getActivities(accessToken, afterDays) {
 }
 
 // -------------------------------------------------------
-// 3) GPT generiert Motivationsnachricht
+// 3) GPT generiert Motivationsnachricht mit Debug
 // -------------------------------------------------------
 async function generateMotivation(activityName, days) {
   const prompt = `
@@ -75,7 +75,15 @@ Ton: locker, motivierend, 1–2 Sätze.
   });
 
   const data = await res.json();
-  if (!data.choices) return "Zeit, wieder in die Gänge zu kommen! 💪";
+
+  // 🔹 DEBUG: Ausgabe der API-Antwort
+  console.log("🔹 GPT Response:", JSON.stringify(data, null, 2));
+
+  if (!data.choices || !data.choices[0]?.message?.content) {
+    console.warn("⚠️ GPT Response ungültig – fallback Nachricht wird genutzt");
+    return "💬 Zeit, wieder in die Gänge zu kommen! 💪";
+  }
+
   return data.choices[0].message.content.trim();
 }
 
@@ -140,6 +148,7 @@ async function main() {
       daysSinceLast = Math.max(1, Math.floor(diffMs / (1000*60*60*24))); // min. 1 Tag
     }
 
+    // GPT-Motivation
     const motivation = await generateMotivation(last?.name ?? "Training", daysSinceLast);
 
     await sendSlackMessageBlocks(last, daysSinceLast, motivation);
@@ -147,7 +156,7 @@ async function main() {
 
   } catch (err) {
     console.error("❌ Fehler:", err);
-    process.exit(1); // sorgt dafür, dass GitHub Actions als "failed" markiert wird
+    process.exit(1);
   }
 }
 
