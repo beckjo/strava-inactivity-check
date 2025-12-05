@@ -36,7 +36,7 @@ async function getAccessToken() {
 }
 
 // -------------------------------------------------------
-// 2) Letzte Strava-Aktivitäten holen
+// 2) Strava Aktivitäten holen
 // -------------------------------------------------------
 async function getActivities(accessToken, afterDays) {
   const now = Math.floor(Date.now() / 1000);
@@ -92,13 +92,48 @@ Ton: locker, motivierend, maximal 1–2 Sätze.
 }
 
 // -------------------------------------------------------
-// 4) Slack-Nachricht senden
+// 4) Slack Nachricht mit Blocks senden
 // -------------------------------------------------------
-async function sendSlackMessage(text) {
+async function sendSlackMessageBlocks(last, daysSinceLast, motivation) {
+  const dayText = daysSinceLast === 1 ? "Tag" : "Tage";
+
+  const blocks = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `⚠️ *Keine Aktivität seit ${daysSinceLast} ${dayText}!*`,
+      },
+    },
+    { type: "divider" },
+  ];
+
+  if (last) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Letzte Aktivität:*\n• *Name:* ${last.name}\n• *Distanz:* ${(last.distance / 1000).toFixed(1)} km\n• *Dauer:* ${Math.round(last.moving_time / 60)} min\n• *Datum:* ${new Date(last.start_date).toLocaleString("de-CH")}`,
+      },
+    });
+  } else {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "_Keine vorherige Aktivität gefunden._" },
+    });
+  }
+
+  blocks.push({ type: "divider" });
+
+  blocks.push({
+    type: "section",
+    text: { type: "mrkdwn", text: `💬 _${motivation}_` },
+  });
+
   await fetch(SLACK_WEBHOOK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ blocks }),
   });
 }
 
@@ -122,7 +157,7 @@ async function main() {
 
     console.log("⚠️ Keine Aktivität gefunden → Sende Slack Nachricht.");
 
-    // Letzte Aktivität holen (unabhängig vom Zeitraum)
+    // Letzte Aktivität holen
     const lastActivityResponse = await fetch(
       "https://www.strava.com/api/v3/athlete/activities?per_page=1",
       { headers: { Authorization: `Bearer ${token}` } }
@@ -130,7 +165,7 @@ async function main() {
     const lastList = await lastActivityResponse.json();
     const last = lastList[0];
 
-    // Dynamische Berechnung der Tage seit letzter Aktivität
+    // Dynamische Berechnung Tage seit letzter Aktivität
     let daysSinceLast = DAYS;
     let lastDate = new Date();
     if (last) {
@@ -140,25 +175,11 @@ async function main() {
       daysSinceLast = Math.floor(diffMs / (1000 * 60 * 60 * 24));
     }
 
-    const dayText = daysSinceLast === 1 ? "Tag" : "Tage";
-
     // GPT-Motivation
     const motivation = await generateMotivation(last?.name ?? "Training", daysSinceLast);
 
-    // Nachricht formatieren
-    const formatted = `
-*Keine Aktivität seit ${daysSinceLast} ${dayText}!* 😴
-
-*Letzte Aktivität:*  
-• ${last?.name ?? "–"}  
-• ${last ? (last.distance / 1000).toFixed(1) + " km" : "-"}  
-• ${last ? Math.round(last.moving_time / 60) + " min" : "-"}  
-• am ${lastDate.toLocaleString("de-CH")}
-
-_${motivation}_
-    `;
-
-    await sendSlackMessage(formatted);
+    // Slack Nachricht senden
+    await sendSlackMessageBlocks(last, daysSinceLast, motivation);
 
     console.log("📨 Slack-Nachricht gesendet!");
 
