@@ -1,60 +1,156 @@
 import fetch from "node-fetch";
 
-const {
-  STRAVA_CLIENT_ID,
-  STRAVA_CLIENT_SECRET,
-  STRAVA_REFRESH_TOKEN,
-  SLACK_WEBHOOK_URL,
-  DAYS_WITHOUT_ACTIVITY
-} = process.env;
+// -------------------------------------------------------
+// CONFIG
+// -------------------------------------------------------
+const STRAVA_CLIENT_ID = process.env.STRAVA_CLIENT_ID;
+const STRAVA_CLIENT_SECRET = process.env.STRAVA_CLIENT_SECRET;
+const STRAVA_REFRESH_TOKEN = process.env.STRAVA_REFRESH_TOKEN;
+const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
+const DAYS = parseInt(process.env.DAYS_WITHOUT_ACTIVITY || "5", 10);
+
+// -------------------------------------------------------
+// 1) Strava Access Token aktualisieren
+// -------------------------------------------------------
 async function getAccessToken() {
-  const res = await fetch("https://www.strava.com/oauth/token", {
+  const response = await fetch("https://www.strava.com/oauth/token", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
       client_id: STRAVA_CLIENT_ID,
       client_secret: STRAVA_CLIENT_SECRET,
       grant_type: "refresh_token",
-      refresh_token: STRAVA_REFRESH_TOKEN
-    })
+      refresh_token: STRAVA_REFRESH_TOKEN,
+    }),
   });
-  return res.json();
+
+  const json = await response.json();
+  if (!json.access_token) {
+    console.error("❌ Fehler beim Holen eines neuen Access Tokens:", json);
+    throw new Error("Strava Token Error");
+  }
+
+  return json.access_token;
 }
 
-async function getRecentActivities(accessToken) {
-  const after = Math.floor(Date.now() / 1000) - DAYS_WITHOUT_ACTIVITY * 86400;
+// -------------------------------------------------------
+// 2) Letzte Strava-Aktivitäten holen
+// -------------------------------------------------------
+async function getActivities(accessToken) {
+  const now = Math.floor(Date.now() / 1000);
+  const after = now - DAYS * 24 * 60 * 60;
 
-  const res = await fetch(
-    `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=1`,
-    {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    }
-  );
-  return res.json();
+  const url = `https://www.strava.com/api/v3/athlete/activities?after=${after}&per_page=30`;
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const data = await response.json();
+  return data;
 }
 
-async function notifySlack() {
+// -------------------------------------------------------
+// 3) GPT generiert Motivationsnachricht
+// -------------------------------------------------------
+async function generateMotivation(activityName, days) {
+  const prompt = `
+Du bist ein motivierender Sport-Coach.
+Erzeuge eine kurze, peppige Motivationsnachricht auf Deutsch.
+Kontext:
+- letzte Aktivität: "${activityName}"
+- Tage ohne Training: ${days}
+Ton: locker, motivierend, maximal 1–2 Sätze.
+  `;
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 60,
+      temperature: 0.9,
+    }),
+  });
+
+  const json = await response.json();
+
+  if (!json.choices) {
+    console.error("❌ GPT Fehler:", json);
+    return "Zeit, wieder in die Gänge zu kommen! 💪";
+  }
+
+  return json.choices[0].message.content.trim();
+}
+
+// -------------------------------------------------------
+// 4) Slack-Nachricht senden
+// -------------------------------------------------------
+async function sendSlackMessage(text) {
   await fetch(SLACK_WEBHOOK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      text: `⚠️ Du warst seit **${DAYS_WITHOUT_ACTIVITY} Tagen** nicht auf Strava aktiv. Zeit für eine Runde! 🚴‍♂️🏃‍♂️💪`
-    })
+    body: JSON.stringify({ text }),
   });
 }
 
+// -------------------------------------------------------
+// MAIN
+// -------------------------------------------------------
 async function main() {
-  const tokenData = await getAccessToken();
-  const activities = await getRecentActivities(tokenData.access_token);
+  try {
+    console.log("🔄 Hole Strava Access Token …");
+    const token = await getAccessToken();
 
-  console.log("Strava Activities Data:", activities);
-  
-  if (activities.length === 0) {
-    console.log("Keine Aktivitäten → Slack Nachricht");
-    await notifySlack();
-  } else {
-    console.log("Aktiv → keine Nachricht");
+    console.log("📡 Hole Aktivitäten …");
+    const activities = await getActivities(token);
+
+    console.log("➡ Aktuelle Aktivitäten:", activities);
+
+    if (activities.length > 0) {
+      console.log("✅ Es gab eine Aktivität → Keine Slack Nachricht.");
+      return;
+    }
+
+    console.log("⚠️ Keine Aktivität gefunden → Sende Slack Nachricht.");
+
+    // Letzte Aktivität holen (für die GPT-Nachricht)
+    // Wir holen zusätzlich die letzte Aktivität unabhängig vom Zeitraum
+    const lastActivityResponse = await fetch(
+      "https://www.strava.com/api/v3/athlete/activities?per_page=1",
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const lastList = await lastActivityResponse.json();
+    const last = lastList[0];
+
+    const motivation = await generateMotivation(last?.name ?? "Training", DAYS);
+
+    const formatted = `
+*Keine Aktivität seit ${DAYS} Tagen!* 😴
+
+*Letzte Aktivität:*  
+• ${last.name}  
+• ${(last.distance / 1000).toFixed(1)} km  
+• ${Math.round(last.moving_time / 60)} min  
+• am ${new Date(last.start_date).toLocaleString("de-CH")}
+
+_${motivation}_
+    `;
+
+    await sendSlackMessage(formatted);
+
+    console.log("📨 Slack-Nachricht gesendet!");
+
+  } catch (err) {
+    console.error("❌ Fehler:", err);
   }
 }
 
