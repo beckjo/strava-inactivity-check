@@ -101,12 +101,13 @@ async function sendSlackMessage(lastActivity, daysSinceLast) {
   }
 
   blocks.push({
-    type: "section",
-    text: {
-      type: "mrkdwn",
-      text: `💬 _${motivation}_\n\n📌 Also los, alles liegen lassen – [Arbeit beenden](${mocoLink})`
-    }
+  type: "section",
+  text: {
+    type: "mrkdwn",
+    text: `💬 _${motivation}_\n\n📌 Also los, alles liegen lassen – <${mocoLink}|Arbeit beenden>`
+  }
   });
+
 
   const res = await fetch(SLACK_WEBHOOK_URL, {
     method: "POST",
