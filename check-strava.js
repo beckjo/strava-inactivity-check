@@ -59,7 +59,6 @@ async function sendSlackMessage(text, gifUrl = null) {
 async function checkStrava() {
   console.log("🔄 Strava Access Token abrufen …");
 
-  // — Refresh Token →
   const tokenResponse = await fetch("https://www.strava.com/oauth/token", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -82,7 +81,6 @@ async function checkStrava() {
 
   console.log("📡 Aktivitäten prüfen …");
 
-  // — Letzte Aktivität holen →
   const activitiesUrl = `https://www.strava.com/api/v3/athlete/activities?per_page=1`;
 
   const activitiesResponse = await fetch(activitiesUrl, {
@@ -98,7 +96,7 @@ async function checkStrava() {
     return;
   }
 
-  // — API Fehler →
+  // API Fehler →
   if (activities?.errors) {
     console.error("❌ Strava API Error:", activities);
     await sendSlackMessage(
@@ -107,13 +105,10 @@ async function checkStrava() {
     return;
   }
 
-  // — Keine Aktivitäten →
+  // Keine Aktivitäten →
   if (!Array.isArray(activities) || activities.length === 0) {
     console.log("⚠️ Keine Aktivitäten gefunden.");
-    await sendSlackMessage(
-      "⚠️ *Keine Strava-Aktivitäten gefunden!*  
-Bitte Token prüfen!"
-    );
+    await sendSlackMessage("⚠️ *Keine Strava-Aktivitäten gefunden!* Bitte Token prüfen!");
     return;
   }
 
@@ -121,9 +116,7 @@ Bitte Token prüfen!"
 
   if (!last?.start_date) {
     console.log("⚠️ Ungültige Strava-Daten.");
-    await sendSlackMessage(
-      "⚠️ *Ungültige Daten von Strava!* Kann Datum der letzten Aktivität nicht lesen."
-    );
+    await sendSlackMessage("⚠️ *Ungültige Daten von Strava!* Kann Datum nicht lesen.");
     return;
   }
 
@@ -135,11 +128,7 @@ Bitte Token prüfen!"
 
   const daysText = diffDays === 1 ? "1 Tag" : `${diffDays} Tagen`;
 
-  // — Motivationsspruch →
-  const randomMessage =
-    messages[Math.floor(Math.random() * messages.length)];
-
-  // — Trainings-GIF →
+  const randomMessage = messages[Math.floor(Math.random() * messages.length)];
   const gifUrl = await getTrainingGif();
 
   const messageText = `*🏋️‍♂️ Keine Aktivität seit ${daysText}!*  
@@ -150,5 +139,4 @@ ${randomMessage}
   await sendSlackMessage(messageText, gifUrl);
 }
 
-// Start
 checkStrava();
