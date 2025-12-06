@@ -8,6 +8,7 @@ const {
   STRAVA_CLIENT_SECRET,
   STRAVA_REFRESH_TOKEN,
   SLACK_WEBHOOK_URL,
+  GIPHY_API_KEY, // <--- eigener Giphy API-Key
   DAYS_WITHOUT_ACTIVITY = 5
 } = process.env;
 
@@ -27,12 +28,8 @@ const motivationalMessages = [
   "Laufen, rollen, strampeln – Hauptsache aktiv! 🚴‍♀️"
 ];
 
-// Zusätzliche kleine Emojis / Variationen
 const emojiExtras = ["✨", "🌟", "⚡", "🔥", "💨", "💪", "🏃‍♂️", "🏃‍♀️"];
 
-// --------------------------
-// Zufällige Auswahl
-// --------------------------
 function getRandomMotivation() {
   const idx = Math.floor(Math.random() * motivationalMessages.length);
   const emoji = emojiExtras[Math.floor(Math.random() * emojiExtras.length)];
@@ -40,15 +37,15 @@ function getRandomMotivation() {
 }
 
 // --------------------------
-// Random GIF von Giphy (immer Fallback)
+// Random Trainings-GIF von Giphy
+// --------------------------
 async function getRandomTrainingGif() {
   try {
-    const apiKey = "dc6zaTOxFJmzC"; // besser: eigener API-Key
     const tags = ["fitness", "workout", "training", "gym", "running", "cycling"];
     const tag = tags[Math.floor(Math.random() * tags.length)];
 
     const res = await fetch(
-      `https://api.giphy.com/v1/gifs/random?api_key=${apiKey}&tag=${tag}`
+      `https://api.giphy.com/v1/gifs/random?api_key=${GIPHY_API_KEY}&tag=${tag}`
     );
     const json = await res.json();
     const url = json?.data?.images?.downsized_large?.url;
