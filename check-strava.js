@@ -40,6 +40,26 @@ function getRandomMotivation() {
 }
 
 // --------------------------
+// Random GIF von Giphy
+// --------------------------
+async function getRandomTrainingGif() {
+  try {
+    const apiKey = "dc6zaTOxFJmzC"; // public beta key
+    const tags = ["fitness", "workout", "training", "gym", "running", "cycling"];
+    const tag = tags[Math.floor(Math.random() * tags.length)];
+
+    const res = await fetch(
+      `https://api.giphy.com/v1/gifs/random?api_key=${apiKey}&tag=${tag}`
+    );
+    const json = await res.json();
+    return json?.data?.images?.downsized_large?.url || null;
+  } catch (err) {
+    console.error("❌ Fehler beim Laden des GIFs:", err);
+    return null;
+  }
+}
+
+// --------------------------
 // Strava Access Token abrufen
 // --------------------------
 async function getAccessToken() {
@@ -70,9 +90,10 @@ async function getAccessToken() {
 // --------------------------
 async function getLastActivity(token) {
   console.log("📡 Aktivitäten prüfen …");
-  const res = await fetch("https://www.strava.com/api/v3/athlete/activities?per_page=1", {
-    headers: { Authorization: `Bearer ${token}` }
-  });
+  const res = await fetch(
+    "https://www.strava.com/api/v3/athlete/activities?per_page=1",
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
   const activities = await res.json();
   return activities.length > 0 ? activities[0] : null;
 }
@@ -83,9 +104,13 @@ async function getLastActivity(token) {
 async function sendSlackMessage(lastActivity, daysSinceLast) {
   const motivation = getRandomMotivation();
   const mocoLink = "https://goldinteractive.mocoapp.com/activities";
+  const gifUrl = await getRandomTrainingGif();
 
   const blocks = [
-    { type: "section", text: { type: "mrkdwn", text: `⚠️ *Keine Aktivität seit ${daysSinceLast} Tagen!*` } },
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: `⚠️ *Keine Aktivität seit ${daysSinceLast} Tagen!*` }
+    },
     { type: "divider" }
   ];
 
@@ -94,20 +119,30 @@ async function sendSlackMessage(lastActivity, daysSinceLast) {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Letzte Aktivität:*\n• *Name:* ${lastActivity.name}\n• *Distanz:* ${(lastActivity.distance/1000).toFixed(1)} km\n• *Dauer:* ${Math.round(lastActivity.moving_time/60)} min\n• *Datum:* ${new Date(lastActivity.start_date).toLocaleString("de-CH")}`
+        text: `*Letzte Aktivität:*\n• *Name:* ${lastActivity.name}\n• *Distanz:* ${(lastActivity.distance / 1000).toFixed(1)} km\n• *Dauer:* ${Math.round(lastActivity.moving_time / 60)} min\n• *Datum:* ${new Date(
+          lastActivity.start_date
+        ).toLocaleString("de-CH")}`
       }
     });
     blocks.push({ type: "divider" });
   }
 
   blocks.push({
-  type: "section",
-  text: {
-    type: "mrkdwn",
-    text: `💬 _${motivation}_\n\n📌 Also los, alles liegen lassen – <${mocoLink}|Arbeit beenden>`
-  }
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `💬 _${motivation}_\n\n📌 Also los, alles liegen lassen – <${mocoLink}|Arbeit beenden>`
+    }
   });
 
+  // GIF Block hinzufügen, falls vorhanden
+  if (gifUrl) {
+    blocks.push({
+      type: "image",
+      image_url: gifUrl,
+      alt_text: "Motivation GIF"
+    });
+  }
 
   const res = await fetch(SLACK_WEBHOOK_URL, {
     method: "POST",
@@ -118,7 +153,10 @@ async function sendSlackMessage(lastActivity, daysSinceLast) {
   if (res.ok) {
     console.log("📨 Slack Nachricht gesendet!");
   } else {
-    console.error("❌ Slack Nachricht konnte nicht gesendet werden:", await res.text());
+    console.error(
+      "❌ Slack Nachricht konnte nicht gesendet werden:",
+      await res.text()
+    );
   }
 }
 
@@ -133,13 +171,17 @@ async function sendSlackMessage(lastActivity, daysSinceLast) {
     const lastActivity = await getLastActivity(token);
     const now = new Date();
     const lastDate = lastActivity ? new Date(lastActivity.start_date) : null;
-    const diffDays = lastDate ? Math.floor((now - lastDate) / (1000*60*60*24)) : Infinity;
+    const diffDays = lastDate
+      ? Math.floor((now - lastDate) / (1000 * 60 * 60 * 24))
+      : Infinity;
 
     if (diffDays >= DAYS_WITHOUT_ACTIVITY) {
       console.warn("⚠️ Keine Aktivität → sende Slack Nachricht.");
       await sendSlackMessage(lastActivity, diffDays);
     } else {
-      console.log(`✅ Aktivität innerhalb der letzten ${DAYS_WITHOUT_ACTIVITY} Tage vorhanden.`);
+      console.log(
+        `✅ Aktivität innerhalb der letzten ${DAYS_WITHOUT_ACTIVITY} Tage vorhanden.`
+      );
     }
   } catch (e) {
     console.error("❌ Fehler im Script:", e);
