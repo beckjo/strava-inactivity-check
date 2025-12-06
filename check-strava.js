@@ -40,11 +40,10 @@ function getRandomMotivation() {
 }
 
 // --------------------------
-// Random GIF von Giphy
-// --------------------------
+// Random GIF von Giphy (immer Fallback)
 async function getRandomTrainingGif() {
   try {
-    const apiKey = "dc6zaTOxFJmzC"; // public beta key
+    const apiKey = "dc6zaTOxFJmzC"; // besser: eigener API-Key
     const tags = ["fitness", "workout", "training", "gym", "running", "cycling"];
     const tag = tags[Math.floor(Math.random() * tags.length)];
 
@@ -52,10 +51,13 @@ async function getRandomTrainingGif() {
       `https://api.giphy.com/v1/gifs/random?api_key=${apiKey}&tag=${tag}`
     );
     const json = await res.json();
-    return json?.data?.images?.downsized_large?.url || null;
+    const url = json?.data?.images?.downsized_large?.url;
+
+    // Fallback, falls kein GIF zurückkommt
+    return url || "https://media.giphy.com/media/l0MYC0LajbaPoEADu/giphy.gif";
   } catch (err) {
     console.error("❌ Fehler beim Laden des GIFs:", err);
-    return null;
+    return "https://media.giphy.com/media/l0MYC0LajbaPoEADu/giphy.gif";
   }
 }
 
@@ -135,14 +137,12 @@ async function sendSlackMessage(lastActivity, daysSinceLast) {
     }
   });
 
-  // GIF Block hinzufügen, falls vorhanden
-  if (gifUrl) {
-    blocks.push({
-      type: "image",
-      image_url: gifUrl,
-      alt_text: "Motivation GIF"
-    });
-  }
+  // GIF Block hinzufügen
+  blocks.push({
+    type: "image",
+    image_url: gifUrl,
+    alt_text: "Motivation GIF"
+  });
 
   const res = await fetch(SLACK_WEBHOOK_URL, {
     method: "POST",
