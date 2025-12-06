@@ -29,4 +29,5 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           DAYS_WITHOUT_ACTIVITY: ${{ secrets.DAYS_WITHOUT_ACTIVITY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
         run: node check-strava.js
